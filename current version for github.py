@@ -1,24 +1,26 @@
+import requests
+
 import http.client
 import tkinter as tk 
 from tkinter import *
 import re
 import math
 
-
 global token
 token = {
         'Content-Type': "application/json",
-        'Authorization': "Bearer  TOKEN GOES HERE"
-}
+        'Authorization': "Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiJ9.eyJhdWQiOiI5MmRkNDVkNy0wZGMxLTRlZDItYWI5My1lN2VmYTdmY2E2NWMiLCJqdGkiOiIwNjk4Mjg1NGY0OGZhODFkM2UzMGY5NTc1NzRlNDgxNjZlNWRiZDAzMDg0N2ZiZjRjM2ZiODEzNGNmMTk2YmU4M2MyYjExOTAwZGIxN2ZmZSIsImlhdCI6MTYxODA2NDE2OCwibmJmIjoxNjE4MDY0MTY4LCJleHAiOjE2MjA2NTYxNjgsInN1YiI6IjkyNjM3MyIsInNjb3BlcyI6WyJ2aWV3LXByaXZhdGUtcmVwb3J0cyJdfQ.HZDprXvz-ME6c50Uj6h0MEakQl75w9FgRzUvvt5ML9zIB_zzoskCN8b6D-H0NEs4lN8gtKzDsGMKr0HebwnjSrzVNJblovEGwgQG3SW8W66EDdwCCzQN0xXY4TEwp5ln96den1wcu8W-IHPPYmmqqTbKf5vPYdwU6HsX16ClGpB2AWrKdL19aWVzGRC8WmPOujxp0KpBu2tbPLk0wrEPamJwXHEdUe39Zng7p70rcleqYbrE1ZTe_hHfDgy3ayOdjin4R-dSoySBEmnbqE8zggnkR3L95IorMU1dD2Fd_9qCJ5H-V5Ve6jukwdUUH7H-pM0NzvdZfKAtjN9VWFe3atxetNfo0dxmjinxb9NQsjt8velMFtww4o6efPIDQCIqxhReTqvoIXVVgv0uFY7gwvAavDucl_znLISLzxgMBh1WMzhH12bv9twZz7cgZjGaeCJLC70YohGNwPdTkJq9W2O-UBKeoQIjOZoXOJvnboUwZI-kM_FHJWRyehZAtS4MFG6XC5lj-iwSp94ABqQfQs2_HleVf3wwOGIPtDrMp6dE3MuwNaOpXdwSjUHMBzLFHOKBVPDHeD934JJ_cNs4r1vZU6UM1JcjFrORksUZpyCtGUb8va0HkPGkr7mczxiJYuAnohTaA71TMcB3bJnLpGX_-d0fwlWERimbOLg5GX8"
+        }
 
 
 
 # hard coding this stuff for now, once I learn dictionaries I feel like this can be cleaned up a lot/be more useful.
+EIDtable=[2398,2418,2383,2402,2405,2406,2412,2399,2417,2407] 
+names=['Shriekwing"','Huntsman Altimor"','Hungering Destroyer"','Lady Inerva Darkvein"','Sun King\'s Salvation"',"Artificer Xy\'mox\"",'Council of Blood"','Sludgefist"','Stone Legion Generals"','Sire Denathrius"']
 # the " suffix on each of the names is because of how the API data gets parsed/stored. 
 #currently names is duplicated/used in get_boss_ID. it is actually used in data_parsing_handler
 #EIDtable is used in data_parsing_handler
-EIDtable=[2398,2418,2383,2402,2405,2406,2412,2399,2417,2407] 
-names=['Shriekwing"','Huntsman Altimor"','Hungering Destroyer"','Lady Inerva Darkvein"','Sun King\'s Salvation"',"Artificer Xy\'mox\"",'Council of Blood"','Sludgefist"','Stone Legion Generals"','Sire Denathrius"']
+
 
 
 ########################################################################################################################################################################
@@ -201,7 +203,7 @@ def data_parsing_handler(report):
     local_boss_id = boss_local_IDs[names.index(pick)][0]
     #print(boss_npcID,local_boss_id)
     stuff=get_start_end_EID(report,pick)
-    #print(stuff)
+    print(stuff)
     start=stuff[0]
     end=stuff[1]
    
@@ -278,36 +280,44 @@ def parse_to_simc_handler(TXY):
     FIGHTS_WITH_DMG_AMPS=[2399]#sludgefist
     FIGHTS_WITH_BOSS_IMMUNES=[2398,2406,2412,2417,2407]#shriekwing, sunking,council,SLG, denathrius
     FIGHTS_WITH_EXTRA_PLAYER_MOVEMENT=[2383,2399] #hungering, sludgefist
-
+    
+    encounter=int(stuff[2])
     formated_events=[] 
     moves=movement_intervals(TXY_to_TM(TXY))
-    if int(stuff[2]) in FIGHTS_WITH_ADDS:
+    for i in moves: formated_events.append(str("raid_events+=/movement,cooldown=9999,distance=")+str(i[3])+str(",duration=")+str(i[2])+str(",first=")+str(i[0])) #generate the normal movement script
+    
+      #check if other fight specific overrides are needed, and then call the functions to handle them:
+    if encounter in FIGHTS_WITH_ADDS:
         adds=ADDS(report,start,end)
         for i in adds:
             formated_events.append(i)
-    for i in moves:
-        formated_events.append(str("raid_events+=/movement,cooldown=9999,distance=")+str(i[3])+str(",duration=")+str(i[2])+str(",first=")+str(i[0]))
+    if encounter in FIGHTS_WITH_EXTRA_PLAYER_MOVEMENT:
+        extra_moves=EXTRA_PLAYER_MOVENTS(report,start,end,encounter)
+        for i in extra_moves: formated_events.append(str("raid_events+=/movement,cooldown=9999,first="+str(i[0])+str(",duration=")+str(i[1])+str(",direction=away")))
+    if encounter in FIGHTS_WITH_DMG_AMPS:
+        dmg_amps=DMG_AMP(report,start,end,encounter)
+        for i in dmg_amps: formated_events.append(i)
+        
+    
+    
+
+
     return formated_events
 
 
-########################################
-#  ENCOUNTER SPECIFIC VARIANCES BELOW  #
-########################################
+##########################################
+##  ENCOUNTER SPECIFIC VARIANCES BELOW  ##
+##########################################
 
-def ADDS(report,start,end):
 '''
 if a fight has adds, then we need to detect when those adds spawn, and when they die, as that is the minimum needed to create a raidevent of an add spawn
- right now every add spawn gets it's own raidEvent.
- this is fine for fights with a few adds (huntsman/innerva), but will make fights with lots of adds very messy (easy/obvious example is echos of sin on denathrius p1)
- the first potential solution to this that comes to mind is to collect all the add spawns as we currently do, but to compare the spawn times of the adds in the list, and then group all adds that spawn within a certain time window
- the obvious way of determining the duration of a group of adds is to calculate the average (mean or median) lifespan of the adds in that grouping. if we want to be fancy, simcraft has functionality for creating a distribution of durations given a mean and standard deviation
- One solvable complicating factor in doing this is when multiple adds spawn that have significantly different HPs, such that they die at very different times. the most obvious example of this is innerva, so some extra consideration should be made
 
 SMALL BUG: killing critters (such as killing a bug, ironically) shows their death in the logs, and therefore creates a raidevent of spawning an add with duration=0.0, which is dumb and pointless.
 EXAMPLE: https://www.warcraftlogs.com/reports/K1Y6fhxajZCq3mF9#fight=7&type=deaths&hostility=1
   on huntsman a dusty widow dies to a fell rush @2:59, which creates the raidevent: raid_events+=/adds,count=1,first=179.58,duration=0.0,cooldown=9999
 *should add functionality to ignore any spawns whos duration is under a certain threshold to remove this clutter.
 '''
+def ADDS(report,start,end):
     conn = http.client.HTTPSConnection("www.warcraftlogs.com")
     payload = str("{\"query\":\"{reportData {\\n    report(code: \\\"")+str(report)+str("\\\"){  table(startTime:")+str(start)+str(", endTime: ")+str(end)+str(",hostilityType:Enemies dataType:Deaths) }\\n\\n  \\n   \\n    }}\\n    \\n\"}")
     headers = token
@@ -342,7 +352,7 @@ EXAMPLE: https://www.warcraftlogs.com/reports/K1Y6fhxajZCq3mF9#fight=7&type=deat
 
     Adds=[] #format [spawn time,duration] for each add.
     for i in range(0,len(death_times)):
-        #therefore we can determine spawn time =  death Timestamp - deathwindow, then i subtract the start time of the encounter to time times make sense.
+        #spawn time =  death Timestamp - deathwindow, then i subtract the start time of the encounter so the times make sense.
         spawn=round((death_times[i]-life_duration[i]-int(start))/1000,2)
         Adds.append([spawn,round(life_duration[i]/1000,2)])
     adds_events=[]
@@ -358,30 +368,63 @@ EXAMPLE: https://www.warcraftlogs.com/reports/K1Y6fhxajZCq3mF9#fight=7&type=deat
 #MINIMUM INFORMATION NEEDED TO GENERATE Raid_event:
 #   1) start time
 #   2) Duration
-#   3) do we pick a new target when the invulnerability happens?
+#   3) do we pick a new target when the invulnerability happens? 
 def IMMUNE_PHASES():
     pass
 
 
 
-#for hungering/sludgefist, ALL players runs away from the boss while the boss remains stationary, so default method of tracking boss movement is not sufficient.
-#YES WE COULD IMPLEMENT THE RANDOM RUN OUT MECHANICS AND STUFF. NO I DON'T WANT TO.
-#while that technically makes the simulation 'more accurate' doing so just adds more variance/randomness that conflicts with what the entire point of this project is meant to accomplish 
-# that is:
-#   1)  trying to generate an accurate approximation of what your gear is capable of on a given fight. This is meant to be the upperbound, as it simulates perfect play. It makes no sense to me to inject variances that will make generating that upper bound less accurate
-#   2)  optimizing gear decisions on a per fight basis. my gut feeling is that random runout mechanics are extremly unlikely to have any meaningful impact on gearing decisions. 
-#that said, if we ever get bored enough to implement random run out mechanics, then I would expect there to be a toggle to turn them on and off. 
-def EXTRA_PLAYER_MOVENTS():
-    pass
-
+#for hungering/sludgefist, all (or at least, all melee) players runs away from the boss while the boss remains stationary, so default method of tracking boss movement is not sufficient.
+#current idea for this: look for the trigger, see duration of the trigger, then induce player movement for the duration of that trigger
+#the trigger is what ever can be associated with the need to move. in the case of hungering/sludgefist this is convieniently a cast
+def EXTRA_PLAYER_MOVENTS(report,start,end,encounter):
+    url = "https://www.warcraftlogs.com/api/v2"
+    if encounter == 2399: #if it's sludgefist:
+        payload = str("{\"query\":\"query ($code: String! $start: Float $end: Float $EID: Int ){\\n    reportData {\\n    report(code: $code){ \\n    \\n     events(startTime: $start, endTime: $end, encounterID: $EID dataType:Casts hostilityType: Enemies abilityID:332318 ){data}\\n    }}}\",\"variables\":{\"start\":")+str(start)+str(",\"end\":")+str(end)+str(",\"EID\":2399,\"code\":\"")+str(report)+str("\"}}")
+        headers = token
+    #so many loops, there's certain to be a vastly more efficient way of doing this, probably new architecture
+        response = requests.request("POST", url, data=payload, headers=headers)
+        split1 = response.text.split('},{')
+        split2=[]
+        for i in split1: split2.append(i.split(',')[0]) #break each line element into its own list item
+        split2[0]=split2[0].strip('{"data":{"reportData":{"report":{"events":{"data":[{') #cleaning up the first entry
+        for i in range (0,len(split2)):
+            split2[i]=round((int(split2[i].split(':')[1])-int(start))/1000,2)#cleaning up the timestamp
+        
+        #assumes moving away whenever the cast starts and you keep running away till the cast completes (once the move is done SimC teleports you back to original positioning is my understanding), we could be fancy and eventaully add in the aiblity to stay in longer
+        moves=[] #[time,cast duration]
+        for i in range (0,len(split2),2):
+            moves.append([split2[i],round(split2[i+1]-split2[i],1)])
+        return moves
+ 
 
 #sludgefist takes increased damage every time he smashes a pillar. currently this is the only fight like this, but this should be future proofed for upcoming content
 #MINIMUM INFORMATION NEEDED TO GENERATE RAID_EVENT:
 #   1) start time
 #   2) Duration
 #   3) damage multiplier
-def DMG_AMP():
-    pass
+def DMG_AMP(report,start,end,encounter):
+    url = "https://www.warcraftlogs.com/api/v2"
+    if encounter == 2399: #if it's sludgefist:
+        payload = str("{\"query\":\"query ($code: String! $start: Float $end: Float $EID: Int ){\\n    reportData {\\n    report(code: $code){ \\n    \\n     events(startTime: $start, endTime: $end, encounterID: $EID dataType:Buffs hostilityType: Enemies abilityID:331314 ){data}\\n    }}}\",\"variables\":{\"start\":")+str(start)+str(",\"end\":")+str(end)+str(",\"EID\":2399,\"code\":\"")+str(report)+str("\"}}")
+        headers = token
+    #so many loops, there's certain to be a vastly more efficient way of doing this, probably new architecture
+        response = requests.request("POST", url, data=payload, headers=headers)
+        split1 = response.text.split('},{')
+        split2=[]
+        for i in split1: split2.append(i.split(',')[0]) #break each line element into its own list item
+        split2[0]=split2[0].strip('{"data":{"reportData":{"report":{"events":{"data":[{') #cleaning up the first entry
+        for i in range (0,len(split2)):
+            split2[i]=round((int(split2[i].split(':')[1])-int(start))/1000,2)#cleaning up the timestamp
+        
+        #assumes moving away whenever the cast starts and you keep running away till the cast completes (once the move is done SimC teleports you back to original positioning is my understanding), we could be fancy and eventaully add in the aiblity to stay in longer
+        amp=[] #[time,cast duration]
+        for i in range (0,len(split2),2):
+            amp.append([split2[i],round(split2[i+1]-split2[i],1)])
+        for i in range(0,len(amp)):
+            amp[i]=str("raid_events+=/vulnerable,cooldown=9999,first=")+str(amp[i][0])+str(",duration=")+str(amp[i][1])+str(",multiplier=2") 
+        for k in amp: print(k)
+        return amp
 
 
 
@@ -391,23 +434,7 @@ def CUSTOM_BUFFS():
     pass
 
 
-'''
-THINKING OUT LOUD:
 
-SLG:
-    a seemingly straight forward way to simulate the bosses is to treat is as 1 boss with immune phases + an add that spawns for p3 that's treated as the 2nd boss.
-    the  obvious problem with this is that it will not accurately simulate condemns >80% usability.
-    it's possible to set particular unit's initial HP% (this is what raidbots does for execute patchwork sims)
-        enemy="NAME"
-        enemy_initial_health_percentage="20"
-    it's not immediately clear how to use this in conjuction with creating the "boss" add for p3. but I see no obvious reasons why there wouldn't be a way to do it.
-
-    assuming that that works out, we gotta deal with the fact that after each intermission, you get a new boss, and therefore it effectively "heals" back to full HP.
-    There might be a way to implement a raid_event to heal the boss during the immunity phases
-    
-
-
-'''
 
 
 
@@ -444,6 +471,84 @@ bGRAB.place(x=385)
 
 
 
-
-
 mainloop()
+
+
+
+
+#############################################################################################################
+
+
+'''
+THINKING OUT LOUD:
+
+SLG:
+    a seemingly straight forward way to simulate the bosses is to treat is as 1 boss with immune phases + an add that spawns for p3 that's treated as the 2nd boss.
+    the  obvious problem with this is that it will not accurately simulate condemns >80% usability.
+    it's possible to set particular unit's initial HP% (this is what raidbots does for execute patchwork sims)
+        enemy="NAME"
+        enemy_initial_health_percentage="20"
+    it's not immediately clear how to use this in conjuction with creating the "boss" add for p3. but I see no obvious reasons why there wouldn't be a way to do it.
+    assuming that works out, we then gotta deal with the fact that after each intermission, you get a new boss, and therefore it effectively "heals" back to full HP.
+    There might be a way to implement a raid_event to heal the boss during the immunity phases, but I am currently unsure.
+
+    
+MERGING MULTIPLE ADD SPAWNS:
+ right now every add spawn gets it's own raidEvent.
+ this is fine for fights with a few adds (huntsman/innerva), but will make fights with lots of adds very messy (easy/obvious example is echos of sin on denathrius p1)
+ the first potential solution to this that comes to mind is to collect all the add spawns as we currently do, but to compare the spawn times of the adds in the list, and then group all adds that spawn within a certain time window
+ the obvious way of determining the duration of a group of adds is to calculate the average (mean or median) lifespan of the adds in that grouping. if we want to be fancy, simcraft has functionality for creating a distribution of durations given a mean and standard deviation
+ One solvable complicating factor in doing this is when multiple adds spawn that have significantly different HPs, such that they die at very different times. the most obvious example of this is innerva, so some extra consideration should be made
+
+
+SIMULATING "RANDOM RUN-OUT" MECHANICS:
+Random run-out mechaninc = any mechanic where you have to run away from the boss that doesn't happen to everyone simultaneously. you know the type. run the debuff out, drop the puddle over here, bla bla bla.
+YES WE COULD IMPLEMENT THE RANDOM RUN OUT MECHANICS AND STUFF. NO I DON'T THINK WE SHOULD (OR AT LEAST, NOT FOR A LONG TIME).
+while that technically makes the simulation 'more accurate' doing so just adds more variance/randomness that conflicts with what the entire point of this project is meant to accomplish 
+ that is:
+   1)  trying to generate an accurate approximation of what your gear is capable of on a given fight. This is meant to be the upperbound, as it simulates perfect play. It makes no sense to me to inject variances that will make generating that upper bound less accurate
+   2)  optimizing gear decisions on a per fight basis. my gut feeling is that random runout mechanics are extremly unlikely to have any meaningful impact on gearing decisions. 
+that said, if we ever get bored enough to implement random run out mechanics, then I would expect there to be a toggle to turn them on and off.    
+
+
+
+PIPE-DREAMING:
+    1)MERGING OF LOGS TO GENERATE SIMPLE PRESETS @ VARIOUS KILL TIMES 
+        once this tool is fully operational for individual logs, I'd be interested trying to generate presets for individual fights by sampling a large set of logs and "averaging" them together such that it
+        reduces the 'noise' present in the data of individual logs. the primary benefit to this is that it would allow users to adjust the fight lengths while maintaining the accuracy of the simulation.
+        That said, creating a system to do this seems like a monumental undertaking, and seems like it could potentially be beyond what my tiny brain is capable of. 
+
+
+        
+    2)CANVAS+TIMELINE --> SIMCRAFT TOOL
+        a major limitation of the strength this project is that it requires you to have done the thing. That is, there must be logs of the strategy in action, and to get an accurate simulation it must have been a kill.
+        Not all strategies are exact copies of what other guilds are doing, and if you can't find a log of someone using a sufficiently similar strategy, then you're not going to have an accurate simulation.
+        more simply: The WCL->Simc project is able to optimize, but is incapable of producing innovations.
+        
+
+        My idea for overcomming this limitation would be creating an entirely different tool.
+        the premise would be to create a canvas tool like raidplan.io, which is a tool that provides overhead images of boss rooms, and allows users to overlay images of the boss, of adds, and of player marker.
+        raidplain.io is primarily used for creating visual aids that help brainstorm/explain boss strategies. This is especially valuable for guilds when they are progressing on a boss.
+
+        This tool would have all of that functionality, but it would also have a timeline. This would allow users to set the boss position at certain times,
+        so they can say at time t1 we move the boss from A to B. and then at time t2 we move the boss from B to C. at time t3 we get adds that spawn,etc.
+        once this timeline has been created by the user, the tool would be able to generate the simcraft overrides to simulate that strategy in Simcraft.
+
+        extrapolating from this initial functionality, there is much that could be done to maximize the benefit of the tool:
+
+            you could allow for placing of movement CDs (windrush/roar  ) (something not currently available in raidplan.io)
+            if melee/ranged don't just follow the boss movements you could force them to move in particular ways at particular times
+            you could specify your composition, and simulate the raid using that composition via the simcraft preset gearsets.
+                    doing this for multiple strategy options would enable you to pick the most optimal one for your raids DPS.
+            It would give world-first guilds the ability to simulate their strategies for upcoming bosses.
+            
+        
+        The biggest problem for me personally is that I have precisely zero experience making anything remotely like a cavnas tool, and I have no real sense of how/where to begin creating a tool like this. 
+
+        
+
+
+    
+    
+
+'''
